@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useCallback, useMemo } from "react";
 import {
   AreaChart,
   Area,
@@ -10,14 +10,13 @@ import {
   ReferenceLine,
 } from "recharts";
 // Assuming TailwindCSS is available for styling based on package.json
+import {
+  buildSentimentChartData,
+  formatTimestamp,
+  getSegmentIndexFromChartClick,
+} from "../utils/sentimentNavigation";
 
-const formatTimestamp = (seconds) => {
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
-};
-
-const CustomTooltip = ({ active, payload }) => {
+const CustomTooltip = ({ active, payload, isNavigable }) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
     const isPositive = data.sentimentScore >= 0;
@@ -42,6 +41,11 @@ const CustomTooltip = ({ active, payload }) => {
         <p className="text-xs text-gray-500 mt-2 italic max-w-xs truncate">
           "{data.text}"
         </p>
+        {isNavigable && (
+          <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-2 font-medium">
+            Click to open this moment in the transcript
+          </p>
+        )}
       </div>
     );
   }
@@ -49,17 +53,23 @@ const CustomTooltip = ({ active, payload }) => {
   return null;
 };
 
-const MeetingSentimentChart = ({ transcript }) => {
-  const chartData = useMemo(() => {
-    if (!transcript || !transcript.segments) return [];
+const MeetingSentimentChart = ({ transcript, onSelectSegment }) => {
+  const chartData = useMemo(
+    () => buildSentimentChartData(transcript),
+    [transcript],
+  );
 
-    return transcript.segments
-      .filter((s) => s.sentimentScore !== undefined)
-      .map((segment) => ({
-        ...segment,
-        displayTime: formatTimestamp(segment.startTime),
-      }));
-  }, [transcript]);
+  const isNavigable = typeof onSelectSegment === "function";
+
+  const handleChartClick = useCallback(
+    (chartState) => {
+      if (!isNavigable) return;
+
+      const segmentIndex = getSegmentIndexFromChartClick(chartData, chartState);
+      if (segmentIndex !== null) onSelectSegment(segmentIndex);
+    },
+    [chartData, isNavigable, onSelectSegment],
+  );
 
   if (!chartData || chartData.length === 0) {
     return (
@@ -86,6 +96,11 @@ const MeetingSentimentChart = ({ transcript }) => {
           <p className="text-sm text-gray-500 dark:text-gray-400">
             Meeting sentiment arc over time
           </p>
+          {isNavigable && (
+            <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-1">
+              Click any point to jump to that moment in the transcript
+            </p>
+          )}
         </div>
         <div className="flex flex-col items-end">
           <span className="text-xs text-gray-500 uppercase tracking-wider font-semibold">
@@ -100,11 +115,12 @@ const MeetingSentimentChart = ({ transcript }) => {
         </div>
       </div>
 
-      <div className="h-64 w-full">
+      <div className={`h-64 w-full ${isNavigable ? "cursor-pointer" : ""}`}>
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart
             data={chartData}
             margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+            onClick={handleChartClick}
           >
             <defs>
               <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
@@ -130,7 +146,7 @@ const MeetingSentimentChart = ({ transcript }) => {
               axisLine={false}
               tickLine={false}
             />
-            <Tooltip content={<CustomTooltip />} />
+            <Tooltip content={<CustomTooltip isNavigable={isNavigable} />} />
             <ReferenceLine y={0} stroke="#9ca3af" strokeDasharray="3 3" />
             <Area
               type="monotone"
@@ -139,7 +155,13 @@ const MeetingSentimentChart = ({ transcript }) => {
               strokeWidth={3}
               fillOpacity={1}
               fill={`url(#${gradientId})`}
-              activeDot={{ r: 6, strokeWidth: 0, fill: "#8b5cf6" }}
+              activeDot={{
+                r: isNavigable ? 7 : 6,
+                strokeWidth: isNavigable ? 2 : 0,
+                stroke: "#ffffff",
+                fill: "#8b5cf6",
+                style: isNavigable ? { cursor: "pointer" } : undefined,
+              }}
             />
           </AreaChart>
         </ResponsiveContainer>

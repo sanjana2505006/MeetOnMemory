@@ -18,6 +18,7 @@ import {
 import { toast } from "react-toastify";
 import MeetingSentimentChart from "../components/MeetingSentimentChart";
 import AppContent from "../context/AppContent.js";
+import { findSegmentIndex } from "../utils/sentimentNavigation.js";
 
 const HighlightedText = ({ text, query }) => {
   if (!query) return <>{text}</>;
@@ -162,14 +163,14 @@ const TranscriptViewer = () => {
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
 
-  const scrollToSegment = (index) => {
+  const scrollToSegment = useCallback((index) => {
+    if (!Number.isInteger(index) || index < 0) return;
+
     setHighlightedSegment(index);
-    const element = document.getElementById(`segment-${index}`);
-    if (element) {
-      element.scrollIntoView({ behavior: "smooth", block: "center" });
-      setTimeout(() => setHighlightedSegment(null), 3000);
-    }
-  };
+    document
+      .getElementById(`segment-${index}`)
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, []);
 
   if (loading) {
     return (
@@ -321,7 +322,10 @@ const TranscriptViewer = () => {
           {/* Transcript Content */}
           <div className="lg:col-span-2 space-y-4">
             {/* Sentiment Chart */}
-            <MeetingSentimentChart transcript={transcript} />
+            <MeetingSentimentChart
+              transcript={transcript}
+              onSelectSegment={scrollToSegment}
+            />
 
             {transcript.segments?.length === 0 ? (
               <div className="bg-white dark:bg-slate-800 rounded-lg p-8 text-center">
@@ -335,7 +339,10 @@ const TranscriptViewer = () => {
                 <div
                   key={index}
                   id={`segment-${index}`}
-                  className={`bg-white dark:bg-slate-800 rounded-lg p-4 border ${
+                  aria-current={
+                    highlightedSegment === index ? "true" : undefined
+                  }
+                  className={`bg-white dark:bg-slate-800 rounded-lg p-4 border scroll-mt-40 ${
                     highlightedSegment === index
                       ? "border-indigo-500 ring-2 ring-indigo-200 dark:ring-indigo-800"
                       : "border-gray-200 dark:border-gray-700"
@@ -429,7 +436,9 @@ const TranscriptViewer = () => {
                     <button
                       key={index}
                       onClick={() =>
-                        scrollToSegment(transcript.segments.indexOf(result))
+                        scrollToSegment(
+                          findSegmentIndex(transcript.segments, result),
+                        )
                       }
                       className="w-full text-left p-3 bg-gray-50 dark:bg-slate-700 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors"
                     >
